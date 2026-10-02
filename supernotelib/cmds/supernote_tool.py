@@ -82,6 +82,8 @@ def convert_to_pdf(args, notebook, palette):
     vectorize = args.pdf_type == 'vector'
     use_link = not args.no_link
     use_keyword = args.add_keyword
+    bg_visibility = VisibilityOverlay.INVISIBLE if args.exclude_background else VisibilityOverlay.DEFAULT
+    vo = sn.converter.build_visibility_overlay(background=bg_visibility)
     converter = PdfConverter(notebook, palette=palette)
     def save(data, file_name):
         if data is not None:
@@ -90,10 +92,10 @@ def convert_to_pdf(args, notebook, palette):
         else:
             print('no data')
     if args.all:
-        data = converter.convert(-1, vectorize, enable_link=use_link, enable_keyword=use_keyword, max_workers=args.workers) # minus value means converting all pages
+        data = converter.convert(-1, vectorize, enable_link=use_link, enable_keyword=use_keyword, visibility_overlay=vo, max_workers=args.workers) # minus value means converting all pages
         save(data, args.output)
     else:
-        data = converter.convert(args.number, vectorize, enable_link=use_link, enable_keyword=use_keyword)
+        data = converter.convert(args.number, vectorize, enable_link=use_link, enable_keyword=use_keyword, visibility_overlay=vo)
         save(data, args.output)
 
 def convert_to_txt(args, notebook, palette):
@@ -187,7 +189,7 @@ def main():
     parser_convert.add_argument('-j', '--workers', type=int, default=min(os.cpu_count() or 1, 8), help='number of worker processes')
     parser_convert.add_argument('-c', '--color', type=str, help='colorize note with comma separated color codes in order of black, darkgray, gray and white.')
     parser_convert.add_argument('-t', '--type', choices=['png', 'svg', 'pdf', 'txt'], default='png', help='select conversion file type')
-    parser_convert.add_argument('--exclude-background', action='store_true', default=False, help='exclude background and make it transparent (PNG and SVG are supported)')
+    parser_convert.add_argument('--exclude-background', action='store_true', default=False, help='exclude background (PNG and SVG become transparent; PDF becomes white)')
     parser_convert.add_argument('--pdf-type', choices=['original', 'vector'], default='original', help='select PDF conversion type')
     parser_convert.add_argument('--no-link', action='store_true', default=False, help='disable links in PDF')
     parser_convert.add_argument('--add-keyword', action='store_true', default=False, help='enable keywords in PDF')
