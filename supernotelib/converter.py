@@ -60,6 +60,49 @@ def build_visibility_overlay(
     }
 
 
+def count_trailing_blank_pages(notebook, palette=None):
+    """Returns how many pages at the end of the notebook have no writing on them.
+
+    Always keeps at least one page, so a notebook that is blank throughout
+    is reported as having one fewer blank trailing page than its total.
+
+    Parameters
+    ----------
+    notebook : Notebook
+        notebook object
+    palette : ColorPalette
+        color palette used to render pages while checking for ink
+
+    Returns
+    -------
+    int
+        number of consecutive blank pages at the end of the notebook
+    """
+    total = notebook.get_total_pages()
+    count = 0
+    for page_number in range(total - 1, 0, -1):
+        if not _page_has_ink(notebook, page_number, palette=palette):
+            count += 1
+        else:
+            break
+    return count
+
+
+def _page_has_ink(notebook, page_number, palette=None):
+    """Returns True if the page has any visible content outside its background layer."""
+    page = notebook.get_page(page_number)
+    if page.get_totalpath() is not None:
+        # the device only records path data when the user has actually drawn something
+        return True
+    image_converter = ImageConverter(notebook, palette=palette)
+    vo = build_visibility_overlay(background=VisibilityOverlay.INVISIBLE)
+    img = image_converter.convert(page_number, visibility_overlay=vo)
+    if img.mode != 'RGBA':
+        # nothing was made transparent, so we can't tell ink from background this way
+        return True
+    return img.getchannel('A').getextrema() != (0, 0)
+
+
 class ImageConverter:
     SPECIAL_WHITE_STYLE_BLOCK_SIZE = 0x140e
 
@@ -325,7 +368,7 @@ class PdfConverter:
         self.palette = palette
         self.pagesize = A4
 
-    def convert(self, page_number, vectorize=False, enable_link=False, enable_keyword=False, visibility_overlay=None, max_workers=None):
+    def convert(self, page_number, vectorize=False, enable_link=False, enable_keyword=False, visibility_overlay=None, total_pages=None, max_workers=None):
         """Returns PDF data of the given page.
 
         Parameters
@@ -340,6 +383,9 @@ class PdfConverter:
             enable page link where keyword has been identified
         visibility_overlay : dict
             layer visibility overlay, e.g. to exclude the background layer
+        total_pages : int
+            overrides the number of pages to convert when page_number < 0 (all pages),
+            e.g. to drop trailing blank pages
         max_workers : int
             max workers for parallel conversion
 
@@ -354,17 +400,17 @@ class PdfConverter:
         else:
             converter = ImageConverter(self.note, self.palette)
             renderer_class = PdfConverter.ImgPageRenderer
-        imglist = self._create_image_list(converter, page_number, visibility_overlay=visibility_overlay, max_workers=max_workers)
+        imglist = self._create_image_list(converter, page_number, visibility_overlay=visibility_overlay, total_pages=total_pages, max_workers=max_workers)
         pdf_data = BytesIO()
         self._create_pdf(pdf_data, imglist, renderer_class, enable_link, enable_keyword)
         return pdf_data.getvalue()
 
-    def _create_image_list(self, converter, page_number, visibility_overlay=None, max_workers=None):
+    def _create_image_list(self, converter, page_number, visibility_overlay=None, total_pages=None, max_workers=None):
         imglist = []
         convert_func = partial(converter.convert, visibility_overlay=visibility_overlay)
         if page_number < 0:
             # convert all pages
-            total = self.note.get_total_pages()
+            total = total_pages if total_pages is not None else self.note.get_total_pages()
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 imglist = list(executor.map(convert_func, range(total)))
         else:

@@ -94,6 +94,13 @@ $ supernote-tool convert -t pdf -a -j 15 your.note finmat2.pdf
 ```
 The default setting uses up to 8 threads.
 
+Notes often contain a single blank page at the end. When converting all pages, you can drop
+any blank pages from the end of the document with `--remove-trailing-blank-pages`:
+
+```
+$ supernote-tool convert -t pdf -a --remove-trailing-blank-pages your.note output.pdf
+```
+
 
 For developers, dump note metadata as JSON format:
 
