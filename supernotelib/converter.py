@@ -22,6 +22,7 @@ import svgwrite
 
 from concurrent.futures import ProcessPoolExecutor
 from enum import Enum, auto
+from functools import partial
 from io import BytesIO
 
 from PIL import Image
@@ -324,7 +325,7 @@ class PdfConverter:
         self.palette = palette
         self.pagesize = A4
 
-    def convert(self, page_number, vectorize=False, enable_link=False, enable_keyword=False, max_workers=None):
+    def convert(self, page_number, vectorize=False, enable_link=False, enable_keyword=False, visibility_overlay=None, max_workers=None):
         """Returns PDF data of the given page.
 
         Parameters
@@ -337,6 +338,8 @@ class PdfConverter:
             enable page links and web links
         enable_keyword : bool
             enable page link where keyword has been identified
+        visibility_overlay : dict
+            layer visibility overlay, e.g. to exclude the background layer
         max_workers : int
             max workers for parallel conversion
 
@@ -351,20 +354,21 @@ class PdfConverter:
         else:
             converter = ImageConverter(self.note, self.palette)
             renderer_class = PdfConverter.ImgPageRenderer
-        imglist = self._create_image_list(converter, page_number, max_workers=max_workers)
+        imglist = self._create_image_list(converter, page_number, visibility_overlay=visibility_overlay, max_workers=max_workers)
         pdf_data = BytesIO()
         self._create_pdf(pdf_data, imglist, renderer_class, enable_link, enable_keyword)
         return pdf_data.getvalue()
 
-    def _create_image_list(self, converter, page_number, max_workers=None):
+    def _create_image_list(self, converter, page_number, visibility_overlay=None, max_workers=None):
         imglist = []
+        convert_func = partial(converter.convert, visibility_overlay=visibility_overlay)
         if page_number < 0:
             # convert all pages
             total = self.note.get_total_pages()
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
-                imglist = list(executor.map(converter.convert, range(total)))
+                imglist = list(executor.map(convert_func, range(total)))
         else:
-            img = converter.convert(page_number)
+            img = convert_func(page_number)
             imglist.append(img)
         return imglist
 
@@ -442,6 +446,11 @@ class PdfConverter:
 
     class ImgPageRenderer:
         def __init__(self, img, pagesize):
+            if img.mode == 'RGBA':
+                # flatten transparent (excluded) background onto white for PDF output
+                background = Image.new('RGBA', img.size, color.RGB_WHITE)
+                background.paste(img, mask=img)
+                img = background.convert('RGB')
             self.img = img
             self.pagesize = pagesize
 
