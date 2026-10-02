@@ -27,6 +27,12 @@ import supernotelib as sn
 from supernotelib.converter import ImageConverter, SvgConverter, PdfConverter, TextConverter
 from supernotelib.converter import VisibilityOverlay
 
+def get_total_pages_to_convert(args, notebook, palette):
+    total = notebook.get_total_pages()
+    if args.all and args.remove_trailing_blank_pages:
+        total -= sn.converter.count_trailing_blank_pages(notebook, palette)
+    return total
+
 def convert_all(converter, total, file_name, save_func, visibility_overlay, max_workers=None):
     basename, extension = os.path.splitext(file_name)
     max_digits = len(str(total))
@@ -55,7 +61,7 @@ def convert_to_png(args, notebook, palette):
     def save(img, file_name):
         img.save(file_name, format='PNG')
     if args.all:
-        total = notebook.get_total_pages()
+        total = get_total_pages_to_convert(args, notebook, palette)
         convert_all(converter, total, args.output, save, vo, max_workers=args.workers)
     else:
         img = converter.convert(args.number, visibility_overlay=vo)
@@ -72,7 +78,7 @@ def convert_to_svg(args, notebook, palette):
         else:
             print('no path data')
     if args.all:
-        total = notebook.get_total_pages()
+        total = get_total_pages_to_convert(args, notebook, palette)
         convert_all(converter, total, args.output, save, vo, max_workers=args.workers)
     else:
         svg = converter.convert(args.number, visibility_overlay=vo)
@@ -92,7 +98,8 @@ def convert_to_pdf(args, notebook, palette):
         else:
             print('no data')
     if args.all:
-        data = converter.convert(-1, vectorize, enable_link=use_link, enable_keyword=use_keyword, visibility_overlay=vo, max_workers=args.workers) # minus value means converting all pages
+        total_pages = get_total_pages_to_convert(args, notebook, palette)
+        data = converter.convert(-1, vectorize, enable_link=use_link, enable_keyword=use_keyword, visibility_overlay=vo, total_pages=total_pages, max_workers=args.workers) # minus value means converting all pages
         save(data, args.output)
     else:
         data = converter.convert(args.number, vectorize, enable_link=use_link, enable_keyword=use_keyword, visibility_overlay=vo)
@@ -107,7 +114,7 @@ def convert_to_txt(args, notebook, palette):
         else:
             print('no data')
     if args.all:
-        total = notebook.get_total_pages()
+        total = get_total_pages_to_convert(args, notebook, palette)
         convert_and_concat_all(converter, total, args.output, save, args.text_page_separator, max_workers=args.workers)
     else:
         data = converter.convert(args.number)
@@ -190,6 +197,7 @@ def main():
     parser_convert.add_argument('-c', '--color', type=str, help='colorize note with comma separated color codes in order of black, darkgray, gray and white.')
     parser_convert.add_argument('-t', '--type', choices=['png', 'svg', 'pdf', 'txt'], default='png', help='select conversion file type')
     parser_convert.add_argument('--exclude-background', action='store_true', default=False, help='exclude background (PNG and SVG become transparent; PDF becomes white)')
+    parser_convert.add_argument('-r', '--remove-trailing-blank-pages', action='store_true', default=False, help='drop pages with no writing from the end of the document (only applies with --all)')
     parser_convert.add_argument('--pdf-type', choices=['original', 'vector'], default='original', help='select PDF conversion type')
     parser_convert.add_argument('--no-link', action='store_true', default=False, help='disable links in PDF')
     parser_convert.add_argument('--add-keyword', action='store_true', default=False, help='enable keywords in PDF')
